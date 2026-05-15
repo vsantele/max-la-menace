@@ -244,7 +244,9 @@ if (!isTouchDevice) {
 if (isTouchDevice) {
   const isOnUi = (target: EventTarget | null): boolean => {
     if (!(target instanceof Element)) return false;
-    return target.closest("button, .joystick") !== null;
+    // Endscreen is a tap target — exclude it so the global touch handler
+    // doesn't preventDefault and swallow the synthetic click.
+    return target.closest("button, .joystick, .endscreen") !== null;
   };
 
   const handleTouchStart = (event: TouchEvent): void => {
@@ -456,9 +458,23 @@ const handleOutcome = (): void => {
   // Stay paused on endscreen; advance only when the user clicks it.
 };
 
-endscreenEl.addEventListener("click", () => {
+let endscreenLatch = false;
+const advanceFromEndscreen = (event: Event): void => {
+  event.preventDefault();
+  event.stopPropagation();
+  // Debounce — touchstart fires before the synthetic click on mobile; without
+  // this, both fire and we re-enter the same stage twice in one tap.
+  if (endscreenLatch) return;
+  endscreenLatch = true;
+  window.setTimeout(() => {
+    endscreenLatch = false;
+  }, 350);
+
+  // Many mobile browsers gate audio resume on a user gesture. The endscreen
+  // tap is one — use it.
+  ensureAudioStarted();
+
   if (!lastOutcome || !lastStageId) {
-    // Idle endscreen — start fresh.
     enterStage("graveyard");
     return;
   }
@@ -470,7 +486,9 @@ endscreenEl.addEventListener("click", () => {
   } else {
     enterStage(lastStageId); // retry same on lose
   }
-});
+};
+endscreenEl.addEventListener("click", advanceFromEndscreen);
+endscreenEl.addEventListener("touchstart", advanceFromEndscreen, { passive: false });
 
 // ---------------------------------------------------------------------------
 // Frame loop
