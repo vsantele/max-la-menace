@@ -1,23 +1,42 @@
 import "./style.css";
 import * as THREE from "three";
 import { getRandomImageUrl } from "./images.js";
+import { audio } from "./audio.js";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) {
   throw new Error("#app element not found");
 }
 
+const isTouchDevice =
+  window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+
+const instructions = isTouchDevice
+  ? "Drag the left side to walk. Drag the right side to look. Hold SPRINT to run."
+  : "Click to enter. Move with WASD / Arrow keys. Hold Shift to sprint.";
+
 app.innerHTML = `
   <div class="hud">
     <h1>Max: La Menace</h1>
-    <p>Click to enter. Move with WASD / Arrow keys. Hold Shift to sprint.</p>
+    <p>${instructions}</p>
     <p class="status" aria-live="polite">Survive the darkness.</p>
+  </div>
+  <button class="audio-toggle" type="button" aria-pressed="false" aria-label="Toggle sound">SOUND OFF</button>
+  <div class="touch-ui${isTouchDevice ? " touch-ui--enabled" : ""}" aria-hidden="true">
+    <div class="joystick">
+      <div class="joystick-knob"></div>
+    </div>
+    <button class="sprint-btn" type="button" aria-label="Sprint">SPRINT</button>
   </div>
   <div class="pulse" aria-hidden="true"></div>
 `;
 
 const statusEl = app.querySelector<HTMLElement>(".status")!;
 const pulseEl = app.querySelector<HTMLElement>(".pulse")!;
+const audioToggleEl = app.querySelector<HTMLButtonElement>(".audio-toggle")!;
+const joystickEl = app.querySelector<HTMLElement>(".joystick")!;
+const joystickKnobEl = app.querySelector<HTMLElement>(".joystick-knob")!;
+const sprintBtnEl = app.querySelector<HTMLButtonElement>(".sprint-btn")!;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a14);
@@ -146,8 +165,19 @@ const menaceTarget = new THREE.Vector3();
 const upAxis = new THREE.Vector3(0, 1, 0);
 const clock = new THREE.Clock();
 
-let isLocked = false;
+let isActive = false;
+let isPointerLocked = false;
 let isCaught = false;
+
+const joystickInput = { x: 0, y: 0 };
+const touchSprint = { active: false };
+const touchIds = {
+  move: null as number | null,
+  look: null as number | null,
+};
+const touchLookPrev = { x: 0, y: 0 };
+const moveTouchOrigin = { x: 0, y: 0 };
+const JOYSTICK_RADIUS = 55;
 
 const onResize = (): void => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -165,10 +195,39 @@ window.addEventListener("keyup", (event) => {
   keyState.delete(event.code);
 });
 
+const updateAudioToggle = (): void => {
+  const running = audio.isRunning();
+  audioToggleEl.textContent = running ? "SOUND ON" : "SOUND OFF";
+  audioToggleEl.setAttribute("aria-pressed", String(running));
+};
+
+audioToggleEl.addEventListener("click", async (event) => {
+  event.stopPropagation();
+  await audio.toggle();
+  updateAudioToggle();
+});
+
+const setActivePlayingStatus = (): void => {
+  statusEl.textContent = "The menace can hear you...";
+};
+
+const setIdleStatus = (): void => {
+  statusEl.textContent = isTouchDevice
+    ? "Tap to enter. The menace stirs..."
+    : "Click to enter. Move with WASD / Arrow keys.";
+};
+
+const ensureAudioStarted = async (): Promise<void> => {
+  if (!audio.hasStarted()) {
+    await audio.start();
+    updateAudioToggle();
+  }
+};
+
 type PointerLockOptions = { unadjustedMovement?: boolean };
 type RequestPointerLock = (options?: PointerLockOptions) => Promise<void> | void;
 
-app.addEventListener("click", async () => {
+const requestLock = async (): Promise<void> => {
   if (document.pointerLockElement) {
     return;
   }
@@ -178,24 +237,158 @@ app.addEventListener("click", async () => {
   } catch {
     await request.call(app);
   }
-});
+};
 
-document.addEventListener("pointerlockchange", () => {
-  isLocked = document.pointerLockElement === app;
-  statusEl.textContent = isLocked
-    ? "The menace can hear you..."
-    : "Click to enter. Move with WASD / Arrow keys.";
-});
+if (isTouchDevice) {
+  renderer.domElement.addEventListener("click", () => {
+    void ensureAudioStarted();
+  });
+} else {
+  app.addEventListener("click", (event) => {
+    if ((event.target as HTMLElement).closest("button")) {
+      return;
+    }
+    void ensureAudioStarted();
+    void requestLock();
+  });
 
-window.addEventListener("mousemove", (event) => {
-  if (!isLocked) {
-    return;
-  }
+  document.addEventListener("pointerlockchange", () => {
+    isPointerLocked = document.pointerLockElement === app;
+    isActive = isPointerLocked;
+    if (isActive) {
+      setActivePlayingStatus();
+    } else {
+      setIdleStatus();
+    }
+  });
 
-  look.yaw -= event.movementX * 0.0024;
-  look.pitch -= event.movementY * 0.002;
-  look.pitch = THREE.MathUtils.clamp(look.pitch, -1.1, 1.1);
-});
+  window.addEventListener("mousemove", (event) => {
+    if (!isPointerLocked) {
+      return;
+    }
+    look.yaw -= event.movementX * 0.0024;
+    look.pitch -= event.movementY * 0.002;
+    look.pitch = THREE.MathUtils.clamp(look.pitch, -1.1, 1.1);
+  });
+}
+
+if (isTouchDevice) {
+  const isOnUi = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return target.closest("button, .joystick") !== null;
+  };
+
+  const handleTouchStart = (event: TouchEvent): void => {
+    let shouldPrevent = false;
+    for (let i = 0; i < event.changedTouches.length; i += 1) {
+      const touch = event.changedTouches[i];
+      if (!touch) continue;
+      if (isOnUi(touch.target)) continue;
+
+      shouldPrevent = true;
+      const isLeftHalf = touch.clientX < window.innerWidth / 2;
+
+      if (isLeftHalf && touchIds.move === null) {
+        touchIds.move = touch.identifier;
+        moveTouchOrigin.x = touch.clientX;
+        moveTouchOrigin.y = touch.clientY;
+        joystickEl.style.left = `${touch.clientX}px`;
+        joystickEl.style.top = `${touch.clientY}px`;
+        joystickEl.classList.add("joystick--active");
+        updateKnob(0, 0);
+      } else if (!isLeftHalf && touchIds.look === null) {
+        touchIds.look = touch.identifier;
+        touchLookPrev.x = touch.clientX;
+        touchLookPrev.y = touch.clientY;
+      }
+    }
+
+    if (shouldPrevent) {
+      event.preventDefault();
+      if (!isActive) {
+        isActive = true;
+        setActivePlayingStatus();
+        void ensureAudioStarted();
+      }
+    }
+  };
+
+  const handleTouchMove = (event: TouchEvent): void => {
+    let shouldPrevent = false;
+    for (let i = 0; i < event.changedTouches.length; i += 1) {
+      const touch = event.changedTouches[i];
+      if (!touch) continue;
+
+      if (touch.identifier === touchIds.move) {
+        shouldPrevent = true;
+        const dx = touch.clientX - moveTouchOrigin.x;
+        const dy = touch.clientY - moveTouchOrigin.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const scale = len > JOYSTICK_RADIUS ? JOYSTICK_RADIUS / len : 1;
+        const nx = (dx * scale) / JOYSTICK_RADIUS;
+        const ny = (dy * scale) / JOYSTICK_RADIUS;
+        joystickInput.x = nx;
+        joystickInput.y = ny;
+        updateKnob(nx, ny);
+      } else if (touch.identifier === touchIds.look) {
+        shouldPrevent = true;
+        const dx = touch.clientX - touchLookPrev.x;
+        const dy = touch.clientY - touchLookPrev.y;
+        look.yaw -= dx * 0.005;
+        look.pitch -= dy * 0.005;
+        look.pitch = THREE.MathUtils.clamp(look.pitch, -1.1, 1.1);
+        touchLookPrev.x = touch.clientX;
+        touchLookPrev.y = touch.clientY;
+      }
+    }
+    if (shouldPrevent) event.preventDefault();
+  };
+
+  const handleTouchEnd = (event: TouchEvent): void => {
+    for (let i = 0; i < event.changedTouches.length; i += 1) {
+      const touch = event.changedTouches[i];
+      if (!touch) continue;
+
+      if (touch.identifier === touchIds.move) {
+        touchIds.move = null;
+        joystickInput.x = 0;
+        joystickInput.y = 0;
+        joystickEl.classList.remove("joystick--active");
+      } else if (touch.identifier === touchIds.look) {
+        touchIds.look = null;
+      }
+    }
+  };
+
+  window.addEventListener("touchstart", handleTouchStart, { passive: false });
+  window.addEventListener("touchmove", handleTouchMove, { passive: false });
+  window.addEventListener("touchend", handleTouchEnd);
+  window.addEventListener("touchcancel", handleTouchEnd);
+
+  const onSprintDown = (event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    touchSprint.active = true;
+    sprintBtnEl.classList.add("sprint-btn--active");
+  };
+  const onSprintUp = (event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    touchSprint.active = false;
+    sprintBtnEl.classList.remove("sprint-btn--active");
+  };
+  sprintBtnEl.addEventListener("touchstart", onSprintDown, { passive: false });
+  sprintBtnEl.addEventListener("touchend", onSprintUp);
+  sprintBtnEl.addEventListener("touchcancel", onSprintUp);
+
+  setIdleStatus();
+}
+
+const updateKnob = (nx: number, ny: number): void => {
+  const px = nx * JOYSTICK_RADIUS;
+  const py = ny * JOYSTICK_RADIUS;
+  joystickKnobEl.style.transform = `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`;
+};
 
 const respawn = (): void => {
   camera.position.set(0, 1.6, 8);
@@ -208,16 +401,38 @@ const respawn = (): void => {
 const updatePlayer = (deltaTime: number): void => {
   moveVector.set(0, 0, 0);
 
-  if (keyState.has("KeyW") || keyState.has("ArrowUp")) moveVector.z -= 1;
-  if (keyState.has("KeyS") || keyState.has("ArrowDown")) moveVector.z += 1;
-  if (keyState.has("KeyA") || keyState.has("ArrowLeft")) moveVector.x -= 1;
-  if (keyState.has("KeyD") || keyState.has("ArrowRight")) moveVector.x += 1;
+  let usingKeyboard = false;
+  if (keyState.has("KeyW") || keyState.has("ArrowUp")) {
+    moveVector.z -= 1;
+    usingKeyboard = true;
+  }
+  if (keyState.has("KeyS") || keyState.has("ArrowDown")) {
+    moveVector.z += 1;
+    usingKeyboard = true;
+  }
+  if (keyState.has("KeyA") || keyState.has("ArrowLeft")) {
+    moveVector.x -= 1;
+    usingKeyboard = true;
+  }
+  if (keyState.has("KeyD") || keyState.has("ArrowRight")) {
+    moveVector.x += 1;
+    usingKeyboard = true;
+  }
 
-  if (moveVector.lengthSq() > 0) {
-    moveVector.normalize();
+  if (!usingKeyboard) {
+    moveVector.x = joystickInput.x;
+    moveVector.z = joystickInput.y;
+  }
+
+  const magnitude = moveVector.length();
+  if (magnitude > 0.1) {
+    if (magnitude > 1) {
+      moveVector.divideScalar(magnitude);
+    }
     moveVector.applyAxisAngle(upAxis, look.yaw);
 
-    const speed = keyState.has("ShiftLeft") || keyState.has("ShiftRight") ? 5.2 : 3.1;
+    const sprinting = keyState.has("ShiftLeft") || keyState.has("ShiftRight") || touchSprint.active;
+    const speed = sprinting ? 5.2 : 3.1;
     nextPosition.copy(camera.position).addScaledVector(moveVector, speed * deltaTime);
     nextPosition.x = THREE.MathUtils.clamp(nextPosition.x, -14, 14);
     nextPosition.z = THREE.MathUtils.clamp(nextPosition.z, -14, 14);
@@ -235,6 +450,7 @@ const updateMenace = (elapsedTime: number, deltaTime: number): void => {
   const distance = menace.position.distanceTo(camera.position);
   const pulse = THREE.MathUtils.clamp(1 - distance / 10, 0, 1);
   pulseEl.style.opacity = String(pulse * 0.85);
+  audio.setIntensity(pulse);
 
   if (distance < 1.25 && !isCaught) {
     isCaught = true;
@@ -250,7 +466,7 @@ const animate = (): void => {
 
   flickerLight.intensity = 2.0 + Math.sin(elapsedTime * 11) * 0.25 + Math.random() * 0.15;
 
-  if (!isCaught) {
+  if (!isCaught && isActive) {
     updatePlayer(deltaTime);
     updateMenace(elapsedTime, deltaTime);
   }
