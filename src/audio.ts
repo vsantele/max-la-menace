@@ -1,5 +1,5 @@
-const FADE_IN_SECONDS = 4;
-const MASTER_VOLUME = 0.55;
+const FADE_IN_SECONDS = 0.8;
+const MASTER_VOLUME = 0.65;
 
 export class CreepyAudio {
   private ctx: AudioContext | null = null;
@@ -20,6 +20,16 @@ export class CreepyAudio {
 
     const ctx = new AudioContext();
     this.ctx = ctx;
+
+    // On iOS Safari (and some Android browsers) the AudioContext can land in
+    // "suspended" even when created during a user gesture. Force a resume.
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch (e) {
+        console.warn("AudioContext.resume() failed", e);
+      }
+    }
 
     const master = ctx.createGain();
     master.gain.setValueAtTime(0, ctx.currentTime);
@@ -94,8 +104,8 @@ export class CreepyAudio {
       const slotStart = t0 + (i / syllables) * duration;
       const slotMid = slotStart + (duration / syllables) * 0.35;
       const slotEnd = slotStart + (duration / syllables) * 0.85;
-      gain.gain.linearRampToValueAtTime(0.32, slotMid);
-      gain.gain.linearRampToValueAtTime(0.04, slotEnd);
+      gain.gain.linearRampToValueAtTime(0.6, slotMid);
+      gain.gain.linearRampToValueAtTime(0.08, slotEnd);
     }
     gain.gain.linearRampToValueAtTime(0, t0 + duration);
 

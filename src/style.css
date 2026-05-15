@@ -100,6 +100,42 @@ canvas {
   white-space: nowrap;
 }
 
+.stage-hint {
+  position: fixed;
+  top: 22%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  font-family: "Times New Roman", serif;
+  font-style: italic;
+  font-size: clamp(1.8rem, 6vw, 3.2rem);
+  color: #ffdcb0;
+  text-shadow:
+    0 2px 14px rgba(0, 0, 0, 0.9),
+    0 0 24px rgba(255, 138, 60, 0.35);
+  letter-spacing: 0.05em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 380ms ease;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stage-hint--show {
+  opacity: 1;
+}
+
+.stage-hint__label {
+  display: block;
+  font-style: normal;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 0.42em;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 0.3em;
+}
+
 .pulse {
   position: fixed;
   inset: 0;

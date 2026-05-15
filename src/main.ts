@@ -30,6 +30,7 @@ app.innerHTML = `
     <p class="objective"><span class="objective-label">State:</span> <span class="candle-count">0 / 7</span></p>
   </div>
   <div class="prompt" aria-hidden="true"></div>
+  <div class="stage-hint" aria-live="polite"><span class="stage-hint__label">Whispered</span><span class="stage-hint__name">—</span></div>
   <button class="audio-toggle" type="button" aria-pressed="false" aria-label="Toggle sound">SOUND OFF</button>
   <div class="touch-ui${isTouchDevice ? " touch-ui--enabled" : ""}" aria-hidden="true">
     <div class="joystick">
@@ -52,6 +53,8 @@ const statusEl = app.querySelector<HTMLElement>(".status")!;
 const whisperNameEl = app.querySelector<HTMLElement>(".whisper-name")!;
 const candleCountEl = app.querySelector<HTMLElement>(".candle-count")!;
 const promptEl = app.querySelector<HTMLElement>(".prompt")!;
+const stageHintEl = app.querySelector<HTMLElement>(".stage-hint")!;
+const stageHintNameEl = app.querySelector<HTMLElement>(".stage-hint__name")!;
 const pulseEl = app.querySelector<HTMLElement>(".pulse")!;
 const audioToggleEl = app.querySelector<HTMLButtonElement>(".audio-toggle")!;
 const joystickEl = app.querySelector<HTMLElement>(".joystick")!;
@@ -377,6 +380,14 @@ const hud: StageHud = {
     if (ready) actionBtnEl.classList.add("action-btn--ready");
     else actionBtnEl.classList.remove("action-btn--ready");
   },
+  setStageHint(text) {
+    if (text === null) {
+      stageHintEl.classList.remove("stage-hint--show");
+    } else {
+      stageHintNameEl.textContent = text;
+      stageHintEl.classList.add("stage-hint--show");
+    }
+  },
   showEndscreen(title, sub) {
     endscreenTitleEl.textContent = title;
     endscreenSubEl.textContent = sub;
@@ -440,6 +451,7 @@ const enterStage = (id: StageId): void => {
   endscreenEl.setAttribute("hidden", "");
   hud.setActionPrompt(null);
   hud.setActionReady(false);
+  hud.setStageHint(null);
   hud.setPulse(0);
   lastOutcome = null;
   currentStage = STAGE_FACTORIES[id](buildCtx(root));

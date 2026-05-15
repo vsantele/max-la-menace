@@ -19,6 +19,12 @@ export interface StageHud {
   setCounter(text: string): void;
   setActionPrompt(text: string | null): void;
   setActionReady(ready: boolean): void;
+  /**
+   * Big, transient center-screen hint. Pass a string to show, `null` to hide.
+   * Useful when the stage needs to announce something the player cannot miss
+   * (e.g. the next whispered name in stage 1).
+   */
+  setStageHint(text: string | null): void;
   showEndscreen(title: string, sub: string): void;
   setPulse(opacity: number): void;
 }

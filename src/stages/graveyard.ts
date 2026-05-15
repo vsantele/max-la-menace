@@ -1010,8 +1010,14 @@ export const createGraveyardStage = (ctx: StageContext): Stage => {
     const candle = candles[idx];
     if (!candle) return;
     state.currentWhisperName = candle.name;
-    state.whisperHudUntil = clock.elapsedTime + 2.5;
+    state.whisperHudUntil = clock.elapsedTime + 3.2;
     audio.playWhisper(candle.name);
+    hud.setStageHint(candle.name);
+    const hideId = ctx.setTimeout(() => {
+      hud.setStageHint(null);
+      timeoutIds.delete(hideId);
+    }, 3000);
+    timeoutIds.add(hideId);
     updateHud();
   };
 
