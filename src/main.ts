@@ -231,11 +231,11 @@ const requestLock = async (): Promise<void> => {
   if (document.pointerLockElement) {
     return;
   }
-  const request = app.requestPointerLock as RequestPointerLock;
+  const request: RequestPointerLock = (app.requestPointerLock as RequestPointerLock).bind(app);
   try {
-    await request.call(app, { unadjustedMovement: true });
+    await request({ unadjustedMovement: true });
   } catch {
-    await request.call(app);
+    await request();
   }
 };
 

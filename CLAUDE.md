@@ -4,14 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-This project uses **pnpm** (not npm — the README is out of date). The CI workflow uses pnpm 11 / Node 22.
+This project is on **Vite+** (the `vp` CLI), on top of pnpm. CI uses pnpm 11 / Node 24. Old `pnpm <script>` invocations still work — the npm scripts in `package.json` delegate to `vp`.
 
-- `pnpm install` — install dependencies
-- `pnpm dev` — start Vite dev server
-- `pnpm build` — production build to `dist/`
-- `pnpm preview` — serve the production build locally
+- `vp install` — install dependencies (delegates to pnpm)
+- `vp dev` — start dev server
+- `vp build` — production build to `dist/`
+- `vp preview` — serve the production build
+- `vp check` — format + lint (type-aware oxlint) + type check; **use this for validation loops**
+- `vp check --fix` — auto-fix formatting and fixable lint issues
+- `vp test` — run vitest (no test files currently — exits 1 by design)
 
-No test runner, linter, or formatter is configured.
+Tool-specific config (lint plugins/rules, fmt ignore patterns, staged hook) lives in the `lint`, `fmt`, and `staged` blocks of `vite.config.ts`. The `.oxlintrc.json` / `.oxfmtrc.json` files no longer exist.
 
 ## Architecture
 
@@ -35,4 +38,4 @@ When adding gameplay features, expect to extend `main.ts` directly rather than i
 
 ## Deployment
 
-`.github/workflows/deploy.yml` deploys `main` to GitHub Pages. The build runs `vite build --base="/${{ github.event.repository.name }}/"`, so all asset paths are prefixed with the repo name in production. Keep asset references relative or root-relative to `/` so the base rewrite works.
+`.github/workflows/deploy.yml` deploys `main` to GitHub Pages. The build runs `pnpm exec vp build --base="/${{ github.event.repository.name }}/"`, so all asset paths are prefixed with the repo name in production. Keep asset references relative or root-relative to `/` so the base rewrite works.
