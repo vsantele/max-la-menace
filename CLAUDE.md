@@ -16,17 +16,47 @@ This project is on **Vite+** (the `vp` CLI), on top of pnpm. CI uses pnpm 11 / N
 
 Tool-specific config (lint plugins/rules, fmt ignore patterns, staged hook) lives in the `lint`, `fmt`, and `staged` blocks of `vite.config.ts`. The `.oxlintrc.json` / `.oxfmtrc.json` files no longer exist.
 
+## Design — "The Seventh Candle"
+
+**Read first.** The gameplay loop and visual style for this game are
+specified in:
+
+- [`docs/gameplay.md`](./docs/gameplay.md) — concept, win/lose, phase
+  tuning, candle positions, state shape, audio events.
+- [`docs/art-direction.md`](./docs/art-direction.md) — palette, map layout,
+  landmark primitive specs, lighting plan, phase visual shifts.
+
+Implementation should match those docs; if you deviate intentionally,
+update the doc so future Claude has the right reference. **The docs are
+canonical** — they outrank older inline comments or memory.
+
 ## Architecture
 
-A single-page Three.js horror game. The entire game lives in `src/main.ts` — there is no scene/entity abstraction layer. The flow is:
+A single-page Three.js horror game. The game lives in `src/main.ts`. The
+flow is:
 
-1. The script imports `style.css` and `images.ts`, then mounts HUD markup into `#app` (from `index.html`).
-2. It builds a fixed scene (floor, four walls, ambient + directional + flickering point light, 32 randomly placed grave meshes).
-3. The "menace" is a `THREE.Sprite` whose texture is loaded at runtime from `https://assets.vsantele.dev/max-la-menace/<filename>.webp`. The filenames are hardcoded in `src/images.ts` (`getRandomImageUrl`). A new texture is picked on every respawn and the previous one is `.dispose()`d.
-4. Input: pointer lock on click, WASD/arrows + Shift for movement, mouse for yaw/pitch. Camera position is clamped to `[-14, 14]` on both axes (room is 30×30).
-5. The menace lerps toward the camera each frame; on `distance < 1.25` the player is caught and `respawn()` runs after 1.8s.
+1. The script imports `style.css`, `images.ts`, and `audio.ts`, then mounts
+   HUD markup into `#app` (from `index.html`).
+2. It builds the scene from the spec in `docs/art-direction.md` — floor,
+   perimeter walls + iron-fence spikes, ambient + moonlight + flickering
+   central point light, mausoleum row, chapel ruin, hanging tree, 25 decoy
+   graves + 7 candle graves, the gate, low fog patches.
+3. The "menace" is a `THREE.Sprite` textured from
+   `https://assets.vsantele.dev/max-la-menace/<filename>.webp`
+   (filenames hardcoded in `src/images.ts`, `getRandomImageUrl`). New
+   texture per respawn; previous is `.dispose()`d. A second flanker sprite
+   spawns at candle 5.
+4. Input: pointer lock + WASD/arrows + Shift + **E (interact)** on desktop;
+   virtual joystick + drag-to-look + SPRINT + ACTION on touch. Camera
+   clamped `[-14, 14]` on x and z (room is 30×30).
+5. Each frame: run the game state machine (whisper scheduling, interact
+   check, phase tuning, win/lose detection), lerp Max toward the camera,
+   render.
 
-When adding gameplay features, expect to extend `main.ts` directly rather than introducing modules, unless the file grows unwieldy.
+When adding gameplay features, prefer extending `main.ts` directly rather
+than introducing modules, unless the file grows clearly unwieldy. `audio.ts`
+and `images.ts` are the two existing modules; both are small and
+self-contained.
 
 ## TypeScript
 
