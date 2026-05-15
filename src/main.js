@@ -99,6 +99,7 @@ const look = { yaw: Math.PI, pitch: 0 }
 const moveVector = new THREE.Vector3()
 const nextPosition = new THREE.Vector3()
 const menaceTarget = new THREE.Vector3()
+const upAxis = new THREE.Vector3(0, 1, 0)
 const clock = new THREE.Clock()
 
 let isLocked = false
@@ -160,7 +161,7 @@ const updatePlayer = (deltaTime) => {
 
   if (moveVector.lengthSq() > 0) {
     moveVector.normalize()
-    moveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), look.yaw)
+    moveVector.applyAxisAngle(upAxis, look.yaw)
 
     const speed = keyState.has('ShiftLeft') || keyState.has('ShiftRight') ? 5.2 : 3.1
     nextPosition.copy(camera.position).addScaledVector(moveVector, speed * deltaTime)
